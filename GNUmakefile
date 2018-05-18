@@ -7,12 +7,11 @@ HDFMPIINCFLAGS   = -I$(MPI_DIR)/include
 HDFMPILIBFLAGS   = -L$(MPI_DIR)/lib -lhdf5 -lz
 
 
-CXX = icpc -std=c++11
-MPILIBFLAGS=-L/usr/local/lib -lmpi_cxx -lmpi -lm
+CXX = $(MPI_DIR)/bin/mpicxx -std=c++11
 CXXFLAGS = -g
 PPFLAGS = $(HDF5INCFLAGS) $(HDFMPIINCFLAGS)
 LDFLAGS = 
-LIBFLAGS = $(HDF5LIBFLAGS) $(HDFMPILIBFLAGS) $(MPILIBFLAGS)
+LIBFLAGS = $(HDF5LIBFLAGS) $(HDFMPILIBFLAGS)
 
 all: GEOSDriver.exe ChomboDriver.exe
 
