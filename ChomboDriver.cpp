@@ -1,6 +1,4 @@
-
 #include "coupler.H"
-
 
 int stop(int, void*){ abort(); return 0;}
 
@@ -44,17 +42,13 @@ int main(int argc, char* argv[])
   // pressure.resize(d[1]);
   // MPI_Bcast(pressure.data(), d[1], MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-  
-  V* empty = nullptr;
-  P* emptyP = nullptr;
-
   dt = 1.155;
   // rwBoundaryFile(MPI_COMM_WORLD, "GEOSboundary.hdf5.tmp2", false, //false="write"
   //                dt, 0, 0, emptyP, empty, quadOffset, QCOUNT, pressure);
   if (rank==0)
   {
-    writeBoundaryFile(MPI_COMM_NULL, "GEOSboundary.hdf5", dt, 0, VCOUNT, emptyP,
-                      empty, 0, QCOUNT, pressure);
+    writeBoundaryFile(MPI_COMM_NULL, "GEOSboundary.hdf5", dt, 0, VCOUNT, x, v,
+                      0, QCOUNT, pressure);
   }
 
   

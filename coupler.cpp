@@ -148,7 +148,7 @@ void boundaryFileOffsets(MPI_Comm comm, int localCount, int& offset, int& count)
 {
   int N;
   MPI_Comm_size(comm, &N);
-  MPI_Scan (&localCount, &offset, 1, MPI_INT, MPI_SUM, comm );
+  MPI_Scan(&localCount, &offset, 1, MPI_INT, MPI_SUM, comm );
   count = offset;
   MPI_Bcast( &count, 1, MPI_INT, N-1, comm); //last rank has total sum
   offset -= localCount;
@@ -237,7 +237,6 @@ void createBoundaryFile(MPI_Comm comm, const std::string& filename, int voffset,
   H5Dwrite(v_set,  H5T_NATIVE_DOUBLE, mdataspace, hyperslab, H5P_DEFAULT, 
            velocity);
 
-  
   dims[0] = qtotal * 4;
   fdataspace = H5Screate_simple(1, dims, NULL);
   hid_t q_set = H5Dcreate(root, "Quads", H5T_NATIVE_INT, fdataspace, 

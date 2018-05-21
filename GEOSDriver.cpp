@@ -1,6 +1,3 @@
-
-#include <cstdio>
-
 #include "coupler.H"
 
 int VCOUNT=9;
@@ -65,13 +62,10 @@ int main(int argc, char* argv[])
   int quadCount, quadOffset;
   boundaryFileOffsets(MPI_COMM_WORLD, QCOUNT, quadOffset, quadCount);
 
-  std::cout << "ABOUT TO CREATE BOUNDARY FILE" << std::endl;
   createBoundaryFile(MPI_COMM_WORLD,
                      "GEOSboundary.hdf5.tmp1", vertexOffset, VCOUNT, vertexCount,
                      VID, x, v, quadOffset, QCOUNT, quadCount, 
                      quads, QID, pressure);
-  std::cout << "DONE CREATING BOUNDARY FILE" << std::endl;
-
 
   rename("GEOSboundary.hdf5.tmp1","GEOSboundary.hdf5.tmp2");
 
