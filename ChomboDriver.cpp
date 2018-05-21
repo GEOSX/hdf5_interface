@@ -26,8 +26,8 @@ int main(int argc, char* argv[])
 
   if(rank == 0)
   {
-    readBoundaryFile(MPI_COMM_NULL, "GEOSboundary.hdf5", dt, 0, VCOUNT, VID,
-                     x, v, 0, QCOUNT, quads, QID, pressure);
+    readBoundaryFile(MPI_COMM_NULL, "GEOSboundary.hdf5", dt, 0, VCOUNT, VID, x,
+                     v, 0, QCOUNT, quads, QID, pressure);
   }
   
   for(int i = 0; i < QCOUNT; ++i) 
@@ -53,8 +53,8 @@ int main(int argc, char* argv[])
   //                dt, 0, 0, emptyP, empty, quadOffset, QCOUNT, pressure);
   if (rank==0)
   {
-    rwBoundaryFile(MPI_COMM_NULL, "GEOSboundary.hdf5", false, //false="write"
-                   dt, 0, VCOUNT, emptyP, empty, 0, QCOUNT, pressure);
+    writeBoundaryFile(MPI_COMM_NULL, "GEOSboundary.hdf5", dt, 0, VCOUNT, emptyP,
+                      empty, 0, QCOUNT, pressure);
   }
 
   
