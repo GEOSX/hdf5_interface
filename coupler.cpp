@@ -3,8 +3,22 @@
 namespace internal
 {
 
-//------------------------------------------------------------------------------
-void createDataset(hid_t group, const std::string& name, hid_t type, 
+/*!
+ * \brief Create a dataset under the given group with the given data.
+ *
+ * \param [in] group the group where the dataset will live.
+ * \param [in] name the name of the dataset.
+ * \param [in] type the datatype of the dataset.
+ * \param [in] global_offset the offset at which this rank is to write to
+ *  the dataset.
+ * \param [in] global_size the total size of the dataset.
+ * \param [in] local_size the size of the chunk to be written by this rank.
+ * \param [in] data the data to be written.
+ *
+ * \note all indexing is done in units of TYPE. So if TYPE is a vector of three
+ *  doubles then a LOCAL_SIZE of 4 means that you write a total of 12 doubles.
+ */
+void createDataset(hid_t group, const char* name, hid_t type, 
                    hsize_t global_offset, hsize_t global_size,
                    hsize_t local_size, const void* data)
 {
@@ -18,15 +32,32 @@ void createDataset(hid_t group, const std::string& name, hid_t type,
                       &local_size, NULL);
   H5Dwrite(dataset, type, mem_dataspace, hyperslab, H5P_DEFAULT, data);
   
-  H5DClose(dataset);
+  H5Dclose(dataset);
   H5Sclose(dataspace);
   H5Sclose(mem_dataspace);
 }
 
-//------------------------------------------------------------------------------
-void createDataset(hid_t group, const std::string& name, hid_t type, 
+/*!
+ * \brief Create a dataset under the given group with a subset of the given data
+ *  specified by the indices arra.
+ *
+ * \param [in] group the group where the dataset will live.
+ * \param [in] name the name of the dataset.
+ * \param [in] type the datatype of the dataset.
+ * \param [in] global_offset the offset at which this rank is to write to
+ *  the dataset
+ * \param [in] global_size the total size of the dataset.
+ * \param [in] local_size the size of the chunk to be written by this rank.
+ * \param [in] buffer_size the total length of the DATA array.
+ * \param [in] indices the indices of the values in the DATA array to write out.
+ * \param [in] data the data to be written.
+ *
+ * \note all indexing is done in units of TYPE. So if TYPE is a vector of three
+ *  doubles then a LOCAL_SIZE of 4 means that you write a total of 12 doubles.
+ */
+void createDataset(hid_t group, const char* name, hid_t type, 
                    hsize_t global_offset, hsize_t global_size,
-                   hsize_t local_size, hsize_t selection_size,
+                   hsize_t local_size, hsize_t buffer_size, 
                    const hsize_t* indices,
                    const void* data)
 {
@@ -34,185 +65,198 @@ void createDataset(hid_t group, const std::string& name, hid_t type,
   hid_t dataset = H5Dcreate(group, name, type, dataspace, H5P_DEFAULT, 
                             H5P_DEFAULT, H5P_DEFAULT);
 
-  hid_t mem_dataspace = H5Screate_simple(1, &local_size, NULL);
-  H5Sselect_elements(mem_dataspace, H5S_SELECT_SET, selection_size, indices);
+  hid_t mem_dataspace = H5Screate_simple(1, &buffer_size, NULL);
+  H5Sselect_elements(mem_dataspace, H5S_SELECT_SET, local_size, indices);
   
   hid_t hyperslab = dataspace;
   H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, &global_offset, NULL, 
-                      &selection_size, NULL);
+                      &local_size, NULL);
   H5Dwrite(dataset, type, mem_dataspace, hyperslab, H5P_DEFAULT, data);
   
-  H5DClose(dataset);
+  H5Sclose(mem_dataspace);
+  H5Sclose(dataspace);
+  H5Dclose(dataset);
+}
+
+/*!
+ * \brief Create and write field data.
+ *
+ * \param [in] group the group under which to create the datasets.
+ * \param [in] fm the fields to write out.
+ * \param [in] global_offset the offset at which this rank is to write.
+ * \param [in] global_size the total size of the dataset.
+ * \param [in] local_size the size of the chunk to be written by this rank.
+ * \param [in] buffer_size the total length of the DATA array.
+ * \param [in] indices the indices of the values in the DATA array to write out.
+ */
+void createFields(hid_t group, const FieldMap& fm, hsize_t global_offset, 
+                  hsize_t global_size, hsize_t local_size, 
+                  hsize_t buffer_size, const hsize_t* indices)
+{
+  for (FieldMap::const_iterator it = fm.begin(); 
+       it != fm.end(); ++it)
+  {
+    /* Extract the field data and metadata. */
+    const char* name = it->first.c_str();
+    const hid_t base_type = std::get<0>(it->second);
+    const hsize_t n_components = std::get<1>(it->second);
+    const void* data = std::get<2>(it->second);
+
+    /* Create the appropriate type and dataset. */
+    hid_t field_type = H5Tarray_create(base_type, 1, &n_components);
+    internal::createDataset(group, name, field_type, global_offset, 
+                            global_size, local_size, 
+                            buffer_size, indices, data);
+    H5Tclose(field_type);
+  }
+}
+
+/*!
+ * \brief Read a dataset into the given array.
+ *
+ * \param [in] group the group where the dataset lives.
+ * \param [in] name the name of the dataset.
+ * \param [in] global_offset the offset at which this rank is to read from the 
+ *  dataset.
+ * \param [in] n_elems the number of elements to read.
+ * \param [out] data the array to be read into.
+ *
+ * \note all indexing is done in units of the dataset type. So if the type is a
+ *  vector of three doubles then an N_ELEMS of 4 means that you read a total of 
+ *  12 doubles.
+ */
+void readDataset(hid_t group, const char* name, hsize_t global_offset, 
+                 hsize_t n_elems, void* data)
+{
+  /* Open the dataset and get the type. */
+  hid_t dataset = H5Dopen(group, name, H5P_DEFAULT);
+  hid_t dataspace = H5Dget_space(dataset);
+  hid_t type = H5Dget_type(dataset);
+
+  /* Check that the dataset is 1D. */
+  int ndims = H5Sget_simple_extent_ndims(dataspace);
+  if (ndims != 1)
+  {
+    MPI_Abort(MPI_COMM_WORLD, 1);
+  }
+
+  /* Create the memory and file dataspaces and do the read. */
+  hid_t mem_dataspace = H5Screate_simple(1, &n_elems, NULL);
+  hid_t hyperslab = dataspace;
+  H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, &global_offset, 
+                      NULL, &n_elems, NULL);
+
+  H5Dread(dataset, type, mem_dataspace, hyperslab, H5P_DEFAULT, data);
+
   H5Sclose(dataspace);
   H5Sclose(mem_dataspace);
+  H5Tclose(type);
+  H5Dclose(dataset);
 }
 
-//------------------------------------------------------------------------------
-void readBoundaryFile(hid_t root, double& dt, int voffset, int vcount, 
-                      P*& positions, V*& velocities, int qoffset, int qcount, 
-                      double*& pressures)
+/*!
+ * \brief Read a dataset into the given positions of the given array.
+ *
+ * \param [in] group the group where the dataset lives.
+ * \param [in] name the name of the dataset.
+ * \param [in] global_offset the offset at which this rank is to read from the 
+ *  dataset.
+ * \param [in] n_elems the number of elements to read.
+ * \param [in] buffer_size the size of the DATA array.
+ * \param [in] indices the indices of the values in the DATA array to read to.
+ * \param [out] data the array to be read into.
+ *
+ * \note all indexing is done in units of the dataset type. So if the type is a
+ *  vector of three doubles then an N_ELEMS of 4 means that you read a total of 
+ *  12 doubles.
+ */
+void readDataset(hid_t group, const char* name, hsize_t global_offset, 
+                 hsize_t n_elems, hsize_t buffer_size, const hsize_t* indices,
+                 void* data)
 {
-  hid_t attr1= H5Aopen(root, "dt", H5P_DEFAULT);
-  hid_t aid = H5Aget_space(attr1);
-  H5Aread(attr1, H5T_NATIVE_DOUBLE, &dt);
+  /* Open the dataset and get the type. */
+  hid_t dataset = H5Dopen(group, name, H5P_DEFAULT);
+  hid_t dataspace = H5Dget_space(dataset);
+  hid_t type = H5Dget_type(dataset);
 
-  hsize_t dims[1];
-  hsize_t offset[1];
-  hsize_t count[1];
-  
-  hid_t pressures_d = H5Dopen(root, "Pressure", H5P_DEFAULT);
-  hid_t pressures_s = H5Dget_space(pressures_d);
-  dims[0] = qcount;
-  hid_t mdataspace = H5Screate_simple(1, dims, NULL);
-  hid_t hyperslab = pressures_s;
-  if (qcount > 0)
+  /* Check that the dataset is 1D. */
+  int ndims = H5Sget_simple_extent_ndims(dataspace);
+  if (ndims != 1)
   {
-    offset[0] = qoffset;
-    count[0] = qcount;
-    H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, offset , NULL, count, NULL);
-  }
-  else
-  {
-    H5Sselect_none(hyperslab);
+    MPI_Abort(MPI_COMM_WORLD, 1);
   }
 
-  delete[] pressures;
-  pressures = new double[qcount];
-  H5Dread(pressures_d, H5T_NATIVE_DOUBLE, mdataspace, hyperslab, H5P_DEFAULT, 
-          pressures);
+  /* Create the memory and file dataspaces and do the read. */
+  hid_t mem_dataspace = H5Screate_simple(1, &buffer_size, NULL);
+  H5Sselect_elements(mem_dataspace, H5S_SELECT_SET, n_elems, indices);
 
-  hid_t p_set = H5Dopen(root, "Position", H5P_DEFAULT);
-  hid_t p_space = H5Dget_space(p_set);
-  hyperslab = p_space;
+  hid_t hyperslab = dataspace;
+  H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, &global_offset, 
+                      NULL, &n_elems, NULL);
 
-  dims[0] = 3 * vcount;
-  mdataspace = H5Screate_simple(1, dims, NULL);
+  H5Dread(dataset, type, mem_dataspace, hyperslab, H5P_DEFAULT, data);
 
-  if (vcount > 0)
-  {
-    offset[0] = 3 * voffset;
-    count[0] = 3 * vcount;
-    H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, offset , NULL, count, NULL);
-  }
-  else
-  {
-    H5Sselect_none(hyperslab);
-  }
-
-  delete positions;
-  delete[] velocities;
-  positions = new P[vcount];
-  velocities = new V[vcount];
-  H5Dread(p_set, H5T_NATIVE_DOUBLE, mdataspace, hyperslab, H5P_DEFAULT, 
-          positions);
-  hid_t v_set = H5Dopen(root, "Velocity", H5P_DEFAULT);
-  H5Dread(v_set,  H5T_NATIVE_DOUBLE, mdataspace, hyperslab, H5P_DEFAULT, 
-          velocities);
-
-  H5Sclose(mdataspace);
-  H5Sclose(pressures_s);
-  H5Sclose(aid);
-  H5Dclose(p_set);
-  H5Sclose(p_space);
-  H5Dclose(v_set);
-  H5Dclose(pressures_d);
-  H5Aclose(attr1);
+  H5Sclose(dataspace);
+  H5Sclose(mem_dataspace);
+  H5Tclose(type);
+  H5Dclose(dataset);
 }
 
-
-//------------------------------------------------------------------------------
-void writeBoundaryFile(hid_t root, double& dt, int voffset, int vcount, 
-                       const P* positions, const V* velocities, int qoffset, 
-                       int qcount, const double* pressures)
+/*!
+ * \brief Read field data.
+ *
+ * \param [in] group the group under which the fields live.
+ * \param [in/out] fm the fields to write to.
+ * \param [in] global_offset the offset at which this rank is to write.
+ * \param [in] n_elems the number of elements to read in.
+ * \param [in] buffer_size the size of the field data arrays.
+ * \param [in] indices the indices of the values in the field arrays to write to.
+ */
+void readFields(hid_t group, FieldMap& fm, hsize_t global_offset, 
+                hsize_t n_elems, hsize_t buffer_size, const hsize_t* indices)
 {
-  hid_t attr1= H5Aopen(root, "dt", H5P_DEFAULT);
-  hid_t aid = H5Aget_space(attr1);
-  H5Awrite(attr1, H5T_NATIVE_DOUBLE, &dt);
-
-  hsize_t dims[1];
-  hsize_t offset[1];
-  hsize_t count[1];
-  
-  hid_t pressures_d = H5Dopen(root, "Pressure", H5P_DEFAULT);
-  hid_t pressures_s = H5Dget_space(pressures_d);
-  dims[0] = qcount;
-  hid_t mdataspace = H5Screate_simple(1, dims, NULL);
-  hid_t hyperslab = pressures_s;
-  if (qcount > 0)
+  for (FieldMap::iterator it = fm.begin(); 
+       it != fm.end(); ++it)
   {
-    offset[0] = qoffset;
-    count[0] = qcount;
-    H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, offset , NULL, count, NULL);
+    /* Extract the field data and metadata. */
+    const char* name = it->first.c_str();
+    void* data = std::get<2>(it->second);
+
+    /* Read the dataset. */
+    internal::readDataset(group, name, global_offset, n_elems, buffer_size, 
+                          indices, data);
   }
-  else
-  {
-    H5Sselect_none(hyperslab);
-  }
+}
 
-  H5Dwrite(pressures_d, H5T_NATIVE_DOUBLE, mdataspace, hyperslab, H5P_DEFAULT,
-           pressures);
-
-  hid_t p_set = H5Dopen(root, "Position", H5P_DEFAULT);
-  hid_t p_space = H5Dget_space(p_set);
-  hyperslab = p_space;
-
-  dims[0] = 3 * vcount;
-  mdataspace = H5Screate_simple(1, dims, NULL);
-
-  if (vcount > 0)
-  {
-    offset[0] = 3 * voffset;
-    count[0] = 3 * vcount;
-    H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, offset , NULL, count, NULL);
-  }
-  else
-  {
-    H5Sselect_none(hyperslab);
-  }
-
-  H5Dwrite(p_set, H5T_NATIVE_DOUBLE, mdataspace, hyperslab, H5P_DEFAULT, 
-           positions);
-  hid_t v_set = H5Dopen(root, "Velocity", H5P_DEFAULT);
-  H5Dwrite(v_set,  H5T_NATIVE_DOUBLE, mdataspace, hyperslab, H5P_DEFAULT, 
-           velocities);
-
-  H5Sclose(mdataspace);
-  H5Sclose(pressures_s);
-  H5Sclose(aid);
-  H5Dclose(p_set);
-  H5Sclose(p_space);
-  H5Dclose(v_set);
-  H5Dclose(pressures_d);
-  H5Aclose(attr1);
+/*!
+ * \brief Get the offset at which to write to.
+ *
+ * \param [in] comm the communicator used to write the boundary file.
+ * \param [in] local_count the number of elements this rank will write out.
+ * \param [in] offset the offset at which this rank is to write.
+ * \param [in] global_count the total number of elements in the dataset.
+ */
+void boundaryFileOffsets(MPI_Comm comm, int local_count, int& offset, 
+                         int& global_count)
+{
+  int N;
+  MPI_Comm_size(comm, &N);
+  MPI_Scan(&local_count, &offset, 1, MPI_INT, MPI_SUM, comm );
+  global_count = offset;
+  MPI_Bcast( &global_count, 1, MPI_INT, N-1, comm); //last rank has total sum
+  offset -= local_count;
 }
 
 } /* namespace internal */
 
 
 //------------------------------------------------------------------------------
-void boundaryFileOffsets(MPI_Comm comm, int localCount, int& offset, int& count)
+void writeBoundaryFile(MPI_Comm comm, const char* filename, int& face_offset,
+                       int& n_faces_to_write, int& node_offset, 
+                       int& n_nodes_to_write, double dt, int n_faces,
+                       int n_nodes, const int* faces, const bool* on_boundary,
+                       const FieldMap& face_fields, const FieldMap& node_fields)
 {
-  int N;
-  MPI_Comm_size(comm, &N);
-  MPI_Scan(&localCount, &offset, 1, MPI_INT, MPI_SUM, comm );
-  count = offset;
-  MPI_Bcast( &count, 1, MPI_INT, N-1, comm); //last rank has total sum
-  offset -= localCount;
-}
-
-//------------------------------------------------------------------------------
-void writeBoundaryFile(MPI_Comm comm, const std::string& filename, double dt,
-                       int n_nodes, int n_faces, const int* faces, 
-                       const bool* on_boundary, const FieldMap& face_fields,
-                       const FieldMap& node_fields)
-{
-  /* Calculate the number of faces to write. */
-  int n_faces_to_write = 0;
-  for (int i = 0; i < n_faces; ++i)
-  {
-    n_faces_to_write += on_boundary[i];
-  }
-
   /* Create the file and open the root group. */
   hid_t file_access = H5Pcreate(H5P_FILE_ACCESS);
   if (comm != MPI_COMM_NULL)
@@ -220,7 +264,7 @@ void writeBoundaryFile(MPI_Comm comm, const std::string& filename, double dt,
     H5Pset_fapl_mpio(file_access, comm, MPI_INFO_NULL);
   }
 
-  hid_t m_fileID = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, 
+  hid_t m_fileID = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, 
                              file_access);
   H5Pclose(file_access);
   hid_t root = H5Gopen(m_fileID, "/", H5P_DEFAULT);
@@ -233,22 +277,22 @@ void writeBoundaryFile(MPI_Comm comm, const std::string& filename, double dt,
   H5Aclose(attr1);
   H5Sclose(aid);
 
-  /* Get the face offset at which to write. */
-  int face_offset = 0;
-  int total_n_faces_to_write = n_faces_to_write;
-  if (comm != MPI_COMM_NULL)
+  /* Calculate the number of faces to write. */
+  n_faces_to_write = 0;
+  for (int i = 0; i < n_faces; ++i)
   {
-    int comm_size;
-    MPI_Comm_size(comm, &comm_size);
-    MPI_Scan(&n_faces_to_write, &face_offset, 1, MPI_INT, MPI_SUM, comm);
-    total_n_faces_to_write = face_offset;
-    MPI_Bcast(&total_n_faces_to_write, 1, MPI_INT, N - 1, comm);
-    face_offset -= n_faces_to_write;
+    n_faces_to_write += on_boundary[i];
   }
+
+  /* Get the face offset at which to write and the total number of faces to write. */
+  face_offset = 0;
+  int total_n_faces_to_write = n_faces_to_write;
+  internal::boundaryFileOffsets(comm, n_faces_to_write, face_offset, 
+                                total_n_faces_to_write);
 
   /* Collect the face local IDs to write. */
   hsize_t* face_IDs = new hsize_t[n_faces_to_write];
-  cur_n_faces = 0;
+  int cur_n_faces = 0;
   for (int i = 0; i < n_faces; ++i)
   {
     if (on_boundary[i])
@@ -259,65 +303,46 @@ void writeBoundaryFile(MPI_Comm comm, const std::string& filename, double dt,
   }
 
   /* Create the map of local node IDs to file node IDs and the reverse map. */
-  std::unordered_map<int, int> nodeIDtoFileNodeID;
+  std::map<int, int> nodeLocalToFileID;
   for (int i = 0; i < n_faces_to_write; ++i)
   {
+    const int cur_face = face_IDs[i];
     for (int j = 0; j < 4; ++j)
     {
-      int cur_nodeID = faces[4 * i + j];
-      nodeIDtoFileNodeID[cur_nodeID] = -1;
+      int cur_nodeID = faces[4 * cur_face + j];
+      nodeLocalToFileID[cur_nodeID] = -1;
     }
   }
 
   int fileNodeID = 0;
-  const int n_nodes_to_write = nodeIDtoFileNodeID.size();
-  hsize_t* fileNodeIDToLocalID = new hsize_t[n_nodes_to_write];
-  for (std::unordered_map<int, int>::iterator it = nodeIDtoFileNodeID.begin();
-       it != nodeIDtoFileNodeID.end(); ++it)
+  n_nodes_to_write = nodeLocalToFileID.size();
+  hsize_t* nodeFileToLocalID = new hsize_t[n_nodes_to_write];
+  for (std::map<int, int>::iterator it = nodeLocalToFileID.begin();
+       it != nodeLocalToFileID.end(); ++it)
   {
-    fileNodeIDToLocalID[fileNodeID] = it->first;
+    nodeFileToLocalID[fileNodeID] = it->first;
     it->second = fileNodeID;
     fileNodeID++;
   }
 
-  /* Get the node offset at which to write. */
-  int node_offset = 0;
+  /* Get the node offset at which to write and the total number of nodes to write. */
+  node_offset = 0;
   int total_n_nodes_to_write = n_nodes_to_write;
-  if (comm != MPI_COMM_NULL)
-  {
-    int comm_size;
-    MPI_Comm_size(comm, &comm_size);
-    MPI_Scan(&n_nodes_to_write, &node_offset, 1, MPI_INT, MPI_SUM, comm);
-    total_n_nodes_to_write = node_offset;
-    MPI_Bcast(&total_n_nodes_to_write, 1, MPI_INT, N - 1, comm);
-    node_offset -= n_nodes_to_write;
-  }
+  internal::boundaryFileOffsets(comm, n_nodes_to_write, node_offset, 
+                                total_n_nodes_to_write);
 
   /* Write out the node local IDs. */
   internal::createDataset(root, "NodeIDs", H5T_NATIVE_HSIZE, node_offset,
                           total_n_nodes_to_write, n_nodes_to_write, 
-                          fileNodeIDToLocalID);
+                          nodeFileToLocalID);
 
   /* Write out the node field data. */
-  for (FieldMap::const_iterator it = node_fields.begin(); 
-       it != node_fields.end(); ++it)
-  {
-    /* Extract the field data and metadata. */
-    const std::string& name = it->first();
-    const hid_t base_type = std::get<0>(it->second());
-    const hsize_t n_components = std::get<1>(it->second());
-    const void* data = std::get<2>(it->second());
+  internal::createFields(root, node_fields, node_offset, 
+                         total_n_nodes_to_write, n_nodes_to_write,
+                         n_nodes, nodeFileToLocalID);
 
-    /* Create the appropriate type and dataset. */
-    hid_t field_type = H5Tarray_create(base_type, 1, &n_components);
-    internal::createDataset(root, name, field_type, node_offset, 
-                            total_n_nodes_to_write, n_nodes, n_nodes_to_write,
-                            fileNodeIDToLocalID, data);
-    H5Tclose(field_type);
-  }
-
-  delete[] fileNodeIDToLocalID;
-  fileNodeIDToLocalID = nullptr;
+  delete[] nodeFileToLocalID;
+  nodeFileToLocalID = nullptr;
 
   /* Redo the face connectivity with the file nodal numbering. */
   int* faces_to_write = new int[4 * n_faces_to_write];
@@ -327,7 +352,7 @@ void writeBoundaryFile(MPI_Comm comm, const std::string& filename, double dt,
     for (int j = 0; j < 4; ++j)
     {
       const int cur_node = faces[4 * cur_face + j];
-      faces_to_write[4 * i + j] = nodeIDtoFileNodeID[cur_node];
+      faces_to_write[4 * i + j] = nodeLocalToFileID[cur_node];
     }
   }
 
@@ -347,22 +372,9 @@ void writeBoundaryFile(MPI_Comm comm, const std::string& filename, double dt,
                           total_n_faces_to_write, n_faces_to_write, face_IDs);
 
   /* Write out the face field data. */
-  for (FieldMap::const_iterator it = face_fields.begin(); 
-       it != face_fields.end(); ++it)
-  {
-    /* Extract the field data and metadata. */
-    const std::string& name = it->first();
-    const hid_t base_type = std::get<0>(it->second());
-    const hsize_t n_components = std::get<1>(it->second());
-    const void* data = std::get<2>(it->second());
-
-    /* Create the appropriate type and dataset. */
-    hid_t field_type = H5Tarray_create(base_type, 1, &n_components);
-    internal::createDataset(root, name, field_type, face_offset, 
-                            total_n_faces_to_write, n_faces, n_faces_to_write,
-                            face_IDs, data);
-    H5Tclose(field_type);
-  }
+  internal::createFields(root, face_fields, face_offset, 
+                         total_n_faces_to_write, n_faces_to_write, 
+                         n_faces, face_IDs);
 
   delete[] face_IDs;
   face_IDs = nullptr;  
@@ -371,321 +383,41 @@ void writeBoundaryFile(MPI_Comm comm, const std::string& filename, double dt,
   H5Fclose(m_fileID);
 }
 
-// vectors here are local portion of total boundary arrays
-void createBoundaryFile(MPI_Comm comm, const std::string& filename, int voffset,
-                        int vcount, int vtotal, const int* vertexIDs, 
-                        const P* positions, const V* velocity, int qoffset,
-                        int qcount, int qtotal, const int* quads, 
-                        const int* quadIDs, const double* pressures)
+//------------------------------------------------------------------------------
+void readBoundaryFile(MPI_Comm comm, const char* filename, int face_offset,
+                      int n_faces_to_read, int n_faces, int node_offset, 
+                      int n_nodes_to_read, int n_nodes, FieldMap& face_fields,
+                      FieldMap& node_fields)
 {
-  hid_t file_access = H5Pcreate(H5P_FILE_ACCESS);
-  if (comm != MPI_COMM_NULL)
-  {
-    H5Pset_fapl_mpio(file_access, comm, MPI_INFO_NULL);
-  }
-  
-  hid_t m_fileID = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, 
-                             file_access);
-  H5Pclose(file_access);
-
-  hid_t root = H5Gopen(m_fileID, "/", H5P_DEFAULT);
-
-  double dt = 0.0;
-  hid_t aid  = H5Screate(H5S_SCALAR);
-  hid_t attr1 = H5Acreate(root,"dt",H5T_NATIVE_DOUBLE, aid, H5P_DEFAULT, 
-                          H5P_DEFAULT);
-  H5Awrite(attr1, H5T_NATIVE_DOUBLE, &dt);
-  H5Sclose(aid);
-
-  hsize_t dims[1];
-  dims[0] = vtotal;
-  hid_t fdataspace = H5Screate_simple(1, dims, NULL);
-  hid_t id_set = H5Dcreate(root, "VertexID", H5T_NATIVE_INT, fdataspace, 
-                           H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  hid_t hyperslab = fdataspace;
-
-  dims[0] = vcount;
-  hid_t mdataspace = H5Screate_simple(1, dims, NULL);
-
-  hsize_t offset[1];
-  hsize_t count[1];
-  if (vcount > 0)
-  {
-    offset[0] = voffset;
-    count[0] = vcount;
-    H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, offset , NULL, count, NULL);
-  } 
-  else 
-  {
-    H5Sselect_none(hyperslab);
-  }
-
-  H5Dwrite(id_set, H5T_NATIVE_INT, mdataspace, hyperslab, H5P_DEFAULT, 
-           vertexIDs);
-  
-  H5Sclose(mdataspace);
-  H5Sclose(fdataspace);
-  
-  dims[0] = 3 * vtotal;
-  fdataspace = H5Screate_simple(1, dims, NULL);
-  hid_t p_set = H5Dcreate(root, "Position", H5T_NATIVE_DOUBLE, fdataspace, 
-                          H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  hyperslab = fdataspace;
-
-  dims[0]= 3 * vcount;
-  mdataspace = H5Screate_simple(1, dims, NULL);
-
-  if (vcount > 0)
-  {
-    offset[0]=3*voffset;
-    count[0]=3*vcount;
-    H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET,
-                        offset , NULL,
-                        count, NULL);
-  } 
-  else 
-  {
-    H5Sselect_none(hyperslab);
-  }
-
-  H5Dwrite(p_set, H5T_NATIVE_DOUBLE, mdataspace, hyperslab, H5P_DEFAULT, 
-           positions);
-  hid_t v_set = H5Dcreate(root, "Velocity", H5T_NATIVE_DOUBLE, fdataspace, 
-                          H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  H5Dwrite(v_set,  H5T_NATIVE_DOUBLE, mdataspace, hyperslab, H5P_DEFAULT, 
-           velocity);
-
-  dims[0] = qtotal * 4;
-  fdataspace = H5Screate_simple(1, dims, NULL);
-  hid_t q_set = H5Dcreate(root, "Quads", H5T_NATIVE_INT, fdataspace, 
-                          H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  hyperslab = fdataspace;
-
-  dims[0] = qcount * 4;
-  mdataspace = H5Screate_simple(1, dims, NULL);
-
-  if (qcount > 0)
-  {
-    offset[0]=4*qoffset;
-    count[0]=4*qcount;
-    H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET,
-                        offset , NULL,
-                        count, NULL);
-  } 
-  else
-  {
-    H5Sselect_none(hyperslab);
-  }
-
-  H5Dwrite(q_set, H5T_NATIVE_INT, mdataspace, hyperslab, H5P_DEFAULT, quads);
-
-  dims[0]= qtotal;
-  fdataspace = H5Screate_simple(1, dims, NULL);
-  hid_t pres = H5Dcreate(root, "Pressure", H5T_NATIVE_DOUBLE, fdataspace, 
-                         H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  hid_t qid  = H5Dcreate(root, "QuadID", H5T_NATIVE_INT, fdataspace, 
-                         H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  hyperslab = fdataspace;
-
-  dims[0] = qcount;
-  mdataspace = H5Screate_simple(1, dims, NULL);
-
-  if (qcount > 0)
-  {
-    offset[0]=qoffset;
-    count[0]=qcount;
-    H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET,
-                        offset , NULL,
-                        count, NULL);
-  }
-  else
-  {
-    H5Sselect_none(hyperslab);
-  }
-
-  H5Dwrite(pres, H5T_NATIVE_DOUBLE, mdataspace, hyperslab, H5P_DEFAULT, 
-           pressures);
-
-  H5Dwrite(qid, H5T_NATIVE_INT, mdataspace, hyperslab, H5P_DEFAULT, quadIDs);
- 
-  H5Sclose(mdataspace);
-  H5Sclose(fdataspace);
-  H5Dclose(p_set);
-  H5Dclose(id_set);
-  H5Dclose(v_set);
-  H5Dclose(q_set);
-  H5Dclose(pres);
-  H5Dclose(qid);
-  H5Aclose(attr1);
-  H5Gclose(root);
-  H5Fclose(m_fileID);
-}
-
-// assuming the file are opening is already laid out by createBoundaryFile
-// and the VertexID and QuadIDs have not changed.
-// if comm==MPI_COMM_NULL then every rank entering this function opens the file
-//   ie, it not a parallel file open but a posix layer file open.
-//  when "read"ing, std::vector objects get resize called on them.
-void readBoundaryFile(MPI_Comm comm, const std::string& filename, double& dt,
-                      int voffset, int vcount, P*& positions, V*& velocities, 
-                      int qoffset, int qcount, double*& pressures)
-{
-  hid_t file_access = H5Pcreate (H5P_FILE_ACCESS);
-  if(comm != MPI_COMM_NULL)
-  {
-    H5Pset_fapl_mpio(file_access, comm, MPI_INFO_NULL);
-  }
-
-  hid_t m_fileID = H5Fopen(filename.c_str(), H5F_ACC_RDWR, file_access);
-  H5Pclose(file_access);
-  hid_t root = H5Gopen(m_fileID, "/", H5P_DEFAULT);
-  internal::readBoundaryFile(root, dt, voffset, vcount, positions, velocities, 
-                             qoffset, qcount, pressures);
-  H5Gclose(root);
-  H5Fclose(m_fileID);
-}
-
-void readBoundaryFile(MPI_Comm comm, const std::string& filename, double& dt, 
-                      int voffset, int& vcount, int*& vertexIDs, P*& positions,
-                      V*& velocities, int qoffset, int& qcount, int*& quads,
-                      int*& quadIDs, double*& pressures)
-{
+  /* Open the file and the root group. */
   hid_t file_access = H5Pcreate(H5P_FILE_ACCESS);
   if(comm != MPI_COMM_NULL)
   {
-    H5Pset_fapl_mpio(file_access,  comm, MPI_INFO_NULL);
-  }
-
-  hid_t m_fileID = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, file_access);
-  H5Pclose(file_access);
-  hid_t root = H5Gopen(m_fileID, "/",H5P_DEFAULT);
-
-  hid_t vid_d = H5Dopen(root, "VertexID", H5P_DEFAULT);
-  hid_t vid_s = H5Dget_space(vid_d);
-  hsize_t dims[1];
-  hsize_t offsets[1];
-  H5Sget_simple_extent_dims(vid_s, dims, NULL);
-  hid_t mdataspace, hyperslab;
-  if(comm == MPI_COMM_NULL)
-  {
-    mdataspace = H5Screate_simple(1, dims, NULL);
-    hyperslab = mdataspace;
-    delete[] vertexIDs;
-    vertexIDs = new int[dims[0]];
-    voffset = 0;
-    vcount = dims[0];
-  }
-  else
-  {
-    dims[0] = vcount;
-    delete[] vertexIDs;
-    vertexIDs = new int[vcount];
-    mdataspace = H5Screate_simple(1, dims, NULL);
-    hyperslab = mdataspace;
-    if (vcount > 0)
-    {
-      offsets[0] = voffset;
-      H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET,
-                          offsets , NULL,
-                          dims, NULL);
-    }
-    else
-    {
-      H5Sselect_none(hyperslab);
-    }
-  }
-
-  H5Dread(vid_d, H5T_NATIVE_INT, mdataspace, hyperslab, H5P_DEFAULT, vertexIDs);
-  H5Sclose(mdataspace);
-  
-  hid_t qid_d = H5Dopen(root, "QuadID", H5P_DEFAULT);
-  hid_t qid_s = H5Dget_space(qid_d);
-  H5Sget_simple_extent_dims(qid_s, dims, NULL);
-  if (comm == MPI_COMM_NULL)
-  {
-    mdataspace = H5Screate_simple(1, dims, NULL);
-    hyperslab = mdataspace;
-    delete[] quadIDs;
-    quadIDs = new int[dims[0]];
-    qoffset = 0;
-    qcount = dims[0];
-  } 
-  else
-  {
-    dims[0] = qcount;
-    delete[] quadIDs;
-    quadIDs  = new int[qcount];
-    mdataspace = H5Screate_simple(1, dims, NULL);
-    hyperslab=mdataspace;
-    if(qcount > 0)
-    {
-      offsets[0] = qoffset;
-      H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, offsets , NULL, dims, NULL);
-    } 
-    else 
-    {
-      H5Sselect_none(hyperslab);
-    }
-  }
-
-  H5Dread(qid_d, H5T_NATIVE_INT, mdataspace, hyperslab, H5P_DEFAULT, quadIDs);
-  H5Sclose(mdataspace);
-
-  delete[] quads;
-  quads = new int[4 * qcount];
-  hid_t quad_d = H5Dopen(root, "Quads", H5P_DEFAULT);
-  hid_t quad_s = H5Dget_space(quad_d);
-  dims[0] = 4 * qcount;
-  mdataspace = H5Screate_simple(1, dims, NULL);
-  hyperslab = mdataspace;
-  if (qcount > 0)
-  {
-    offsets[0] = qoffset;
-    H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, offsets , NULL, dims, NULL);
-  }
-  else 
-  {
-    H5Sselect_none(hyperslab);
-  }
-  H5Dread(quad_d, H5T_NATIVE_INT, mdataspace, hyperslab, H5P_DEFAULT, quads);
-
-  internal::readBoundaryFile(root, dt, voffset, vcount, positions, velocities, 
-                            qoffset, qcount, pressures);
-
-  H5Sclose(mdataspace);
-  H5Sclose(vid_s);
-  H5Sclose(qid_s);
-  H5Sclose(quad_s);
-  H5Dclose(vid_d);
-  H5Dclose(qid_d);
-  H5Dclose(quad_d);
-  H5Gclose(root);
-  H5Fclose(m_fileID);
-}
-
-
-// assuming the file are opening is already laid out by createBoundaryFile
-// and the VertexID and QuadIDs have not changed.
-// if comm==MPI_COMM_NULL then every rank entering this function opens the file
-//   ie, it not a parallel file open but a posix layer file open.
-void writeBoundaryFile(MPI_Comm comm, const std::string& filename, double& dt,
-                       int voffset, int vcount, const P* positions, 
-                       const V* velocities, int qoffset, int qcount,
-                       const double* pressures)
-{
-  hid_t file_access = H5Pcreate (H5P_FILE_ACCESS);
-  if(comm != MPI_COMM_NULL)
-  {
     H5Pset_fapl_mpio(file_access, comm, MPI_INFO_NULL);
   }
 
-  hid_t m_fileID = H5Fopen(filename.c_str(), H5F_ACC_RDWR, file_access);
+  hid_t m_fileID = H5Fopen(filename, H5F_ACC_RDONLY, file_access);
   H5Pclose(file_access);
   hid_t root = H5Gopen(m_fileID, "/", H5P_DEFAULT);
-  internal::writeBoundaryFile(root, dt, voffset, vcount, positions, velocities, 
-                               qoffset, qcount, pressures);
+
+  /* Get the localIDs of the faces that were written. */
+  hsize_t* face_IDs = new hsize_t[n_faces_to_read];
+  internal::readDataset(root, "QuadIDs", face_offset, n_faces_to_read, face_IDs);
+
+  /* Read in the face fields. */
+  internal::readFields(root, face_fields, face_offset, n_faces_to_read, n_faces, 
+                       face_IDs);  
+  delete[] face_IDs;
+
+  /* Get the localIDs of the nodes that were written. */
+  hsize_t* node_IDs = new hsize_t[n_nodes_to_read];
+  internal::readDataset(root, "NodeIDs", node_offset, n_nodes_to_read, node_IDs);
+
+  /* Read in the node fields. */
+  internal::readFields(root, node_fields, node_offset, n_nodes_to_read, n_nodes, 
+                       node_IDs);
+  delete[] node_IDs;
+
   H5Gclose(root);
   H5Fclose(m_fileID);
 }
-
-

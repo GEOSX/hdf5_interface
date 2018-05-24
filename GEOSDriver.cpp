@@ -1,99 +1,230 @@
 #include "coupler.H"
+#include <iostream>
+#include <cmath>
 
-int VCOUNT=9;
-int QCOUNT=4;
+constexpr double STRIDE = 1.0;
+constexpr int X_EXTENT = 20;
+constexpr int Y_EXTENT = 20;
+constexpr int VCOUNT = X_EXTENT * Y_EXTENT;
+constexpr int QCOUNT = (X_EXTENT - 1) * (Y_EXTENT - 1);
 
-int quads[] = {0,3,4,1,1,4,5,2,3,6,7,4,4,7,8,5};
-double dx=0.5;
-double dy=0.5;
-double dz=0.0;
+int GLOBAL_X_OFFSET;
+int GLOBAL_Y_OFFSET;
 
-inline void createVertex(int globalID, P& p, V& v)
-{
-  int i = globalID / 3;
-  int j = globalID % 3;
-  p.X = dx * i;
-  p.Y = dy * j;
-  p.Z = 0;
-  v.X = 0.0001;
-  v.Y = -0.0005;
-  v.Z = 0.01;
+int stop(int, void*) 
+{ 
+  MPI_Abort(MPI_COMM_WORLD, 1); 
+  return 0;
 }
 
-//int stop(int, void*){ abort(); return 0;}
+void setNodePos(int i, int j, vec3& pos)
+{
+  const int x_offset = j + X_EXTENT * GLOBAL_X_OFFSET;
+  const int y_offset = i + Y_EXTENT * GLOBAL_Y_OFFSET;
+
+  pos.e0 = STRIDE * x_offset;
+  pos.e1 = STRIDE * y_offset;
+  pos.e2 = 0.0;
+}
+
+bool checkNodePos(int i, int j, const vec3& pos)
+{
+  vec3 temp;
+  setNodePos(i, j, temp);
+  return pos.e0 == temp.e0 && pos.e1 == temp.e1 && pos.e2 == temp.e2;
+}
+
+void setNodeVel(int i, int j, vec3& vel)
+{
+  const int x_offset = j + X_EXTENT * GLOBAL_X_OFFSET;
+  const int y_offset = i + Y_EXTENT * GLOBAL_Y_OFFSET;
+
+  vel.e0 = 1.0 / x_offset;
+  vel.e1 = 1.0 / y_offset;
+  vel.e2 = 0.0;
+}
+
+bool checkNodeVel(int i, int j, const vec3& vel)
+{
+  vec3 temp;
+  setNodeVel(i, j, temp);
+  return vel.e0 == temp.e0 && vel.e1 == temp.e1 && vel.e2 == temp.e2;
+}
+
+void invalidateVec3(vec3& v)
+{
+  v.e0 = -1.0;
+  v.e1 = -1.0;
+  v.e2 = -1.0;
+}
+
+bool onBoundary(int i, int j)
+{ 
+  return !(i == 0 || j == 0 || i == Y_EXTENT - 2 || j == X_EXTENT - 2); 
+}
 
 int main(int argc, char* argv[])
 {
-
   MPI_Init(&argc, &argv );
   int rank, N;
-  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &N);
 
-  // H5Eset_auto (H5E_DEFAULT,stop, NULL);// for debugging, tell HDF5 to abort on error
-  if(rank!= N-1) VCOUNT-=3; //everyone shares 3 vertices, the last rank owns all of it's vertices
+  // for debugging, tell HDF5 to abort on error
+  H5Eset_auto (H5E_DEFAULT, stop, NULL);
+
+  const int GLOBAL_DIM = std::sqrt(N);
+  if (GLOBAL_DIM * GLOBAL_DIM != N)
+  {
+    std::cout << "Number of ranks must be a perfect square." << std::endl;
+    MPI_Abort(MPI_COMM_WORLD, 1);
+  }
+
+  GLOBAL_X_OFFSET = rank % GLOBAL_DIM;
+  GLOBAL_Y_OFFSET = rank / GLOBAL_DIM;
+
+  const int GLOBAL_NODE_OFFSET = rank * VCOUNT;
+  const int GLOBAL_FACE_OFFSET = rank * QCOUNT;
   
   // GEOS would replace this logic here.
-  int* VID = new int[VCOUNT];   
-  P* x = new P[VCOUNT];
-  V* v = new V[VCOUNT];
+  vec3* node_pos = new vec3[VCOUNT];
+  vec3* node_vel = new vec3[VCOUNT];
+  int* quads = new int[4 * QCOUNT];
+  bool* on_boundary = new bool[QCOUNT];
   double* pressure = new double[QCOUNT];
-  int* QID = new int[QCOUNT];
- 
-  for(int i = 0; i < VCOUNT; i++)
-  {
-    VID[i] = i + 6 * rank; //6 comes from VCOUNT=9 and sharing 3 vertices with neighbor
-    createVertex(VID[i], x[i], v[i]);
-  }
-
-  for(int i = 0; i < QCOUNT; i++)
-  {
-    pressure[i] = 0.5;
-    QID[i] = i + rank * QCOUNT;
-  }
-  for(int j = 0; j < QCOUNT * 4; j++)
-  {
-    quads[j] += 6 * rank;
-  }
-
-  int vertexOffset, vertexCount;
-  boundaryFileOffsets(MPI_COMM_WORLD, VCOUNT, vertexOffset, vertexCount);
-   
-  int quadCount, quadOffset;
-  boundaryFileOffsets(MPI_COMM_WORLD, QCOUNT, quadOffset, quadCount);
-
-  createBoundaryFile(MPI_COMM_WORLD,
-                     "GEOSboundary.hdf5.tmp1", vertexOffset, VCOUNT, vertexCount,
-                     VID, x, v, quadOffset, QCOUNT, quadCount, 
-                     quads, QID, pressure);
-
-  rename("GEOSboundary.hdf5.tmp1","GEOSboundary.hdf5.tmp2");
-
-
-  double dt;
   
-  readBoundaryFile(MPI_COMM_WORLD,"GEOSboundary.hdf5.tmp2", dt, vertexOffset,
-                   VCOUNT, x, v, quadOffset, QCOUNT, pressure);
-
-  V* empty = nullptr;
-  P* emptyP = nullptr;
-  for(int i = 0; i < QCOUNT; ++i)
+  /* Initialize the nodes. */ 
+  int node_index = 0;
+  for (int i = 0; i < Y_EXTENT; ++i)
   {
-    pressure[i] += 0.055;
-  }    
+    for (int j = 0; j < X_EXTENT; ++j)
+    {
+      setNodePos(i, j, node_pos[node_index]);
+      setNodeVel(i, j, node_vel[node_index]);
+      node_index++;
+    }
+  }
 
-  writeBoundaryFile(MPI_COMM_WORLD, "GEOSboundary.hdf5.tmp2", dt, 0, 0, emptyP, 
-                    empty, quadOffset, QCOUNT, pressure);
+  /* Initialize the quads. */
+  int quad_index = 0;
+  for (int i = 0; i < Y_EXTENT - 1; ++i)
+  {
+    for (int j = 0; j < X_EXTENT - 1; ++j)
+    {
+      quads[4 * quad_index] = X_EXTENT * i + j;
+      quads[4 * quad_index + 1] = X_EXTENT * i + j + 1;
+      quads[4 * quad_index + 2] = X_EXTENT * (i + 1) + j + 1;
+      quads[4 * quad_index + 3] = X_EXTENT * (i + 1) + j;
 
-  rename("GEOSboundary.hdf5.tmp2","GEOSboundary.hdf5");
-  
+      pressure[quad_index] = 1.0 / (quad_index + GLOBAL_FACE_OFFSET * rank);
+
+      if (onBoundary(i, j))
+      {
+        on_boundary[quad_index] = true;
+      }
+      else
+      {
+        on_boundary[quad_index] = false;
+      }
+
+      quad_index++;
+    }
+  }
+
+  /* Write out the data on the boundary. */
+  double dt = 2.5;
+  FieldMap face_fields;
+  face_fields["pressure"] = std::make_tuple(H5T_NATIVE_DOUBLE, 1, pressure);
+
+  FieldMap node_fields;
+  node_fields["position"] = std::make_tuple(H5T_NATIVE_DOUBLE, 3, node_pos);
+  node_fields["velocity"] = std::make_tuple(H5T_NATIVE_DOUBLE, 3, node_vel);
+
+  int face_offset, n_faces_written, node_offet, n_nodes_written;
+  writeBoundaryFile(MPI_COMM_WORLD, "GEOSboundary.hdf5", face_offset, 
+                    n_faces_written, node_offet, n_nodes_written, dt, QCOUNT, 
+                    VCOUNT, quads, on_boundary, face_fields, node_fields);
+
+  /* Invalidate the data on the boundary. */
+  quad_index = 0;
+  for (int i = 0; i < Y_EXTENT - 1; ++i)
+  {
+    for (int j = 0; j < X_EXTENT - 1; ++j)
+    {
+      if (onBoundary(i, j))
+      {
+        pressure[quad_index] = -1.0;
+        for (int k = 0; k < 4; ++k)
+        {
+          int node = quads[4 * quad_index + k];
+          invalidateVec3(node_pos[node]);
+          invalidateVec3(node_vel[node]);
+        }
+      }
+
+      quad_index++;
+    }
+  }
+
+  /* Read in the boundary file. */
+  readBoundaryFile(MPI_COMM_WORLD, "GEOSboundary.hdf5", face_offset, 
+                   n_faces_written, QCOUNT, node_offet, n_nodes_written, VCOUNT, 
+                   face_fields, node_fields);
+
+  /* Check that the data is back to normal. */
+  bool success = true;  
+  node_index = 0;
+  for (int i = 0; i < Y_EXTENT; ++i)
+  {
+    for (int j = 0; j < X_EXTENT; ++j)
+    {
+      bool result = true;
+      result &= checkNodePos(i, j, node_pos[node_index]);
+      result &= checkNodeVel(i, j, node_vel[node_index]);
+      success &= result;
+
+      if (!result)
+      {
+        std::cout << "Rank " << rank << ": Node error at (" << i << ", " << j 
+                  << ")." << std::endl;
+      }
+
+      node_index++;
+    }
+  }
+
+  quad_index = 0;
+  for (int i = 0; i < Y_EXTENT - 1; ++i)
+  {
+    for (int j = 0; j < X_EXTENT - 1; ++j)
+    {
+      if (pressure[quad_index] != 1.0 / (quad_index + GLOBAL_FACE_OFFSET * rank))
+      {
+        std::cout << "Rank " << rank << ": Face error at (" << i << ", " << j 
+                  << ")." << std::endl;
+        success = false;
+      }
+
+      quad_index++;
+    }
+  }
+
+  if (success)
+  {
+    std::cout << "Rank " << rank <<  ": TESTS PASS!!!" << std::endl;
+  }
+  else
+  {
+    std::cout << "Rank " << rank <<  ": TESTS FAIL!!!" << std::endl;
+  }
+
+  delete[] node_pos;
+  delete[] node_vel;
+  delete[] quads;
+  delete[] on_boundary;
+  delete[] pressure;
+
   MPI_Finalize();
 
-  delete[] VID;
-  delete[] x;
-  delete[] v;
-  delete[] pressure;
-  delete[] QID;
-  
   return 0;
 }

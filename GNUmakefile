@@ -1,8 +1,8 @@
-HDF5_DIR      	 = /usr/tce/packages/hdf5/hdf5-parallel-1.8.18-intel-18.0.1-openmpi-2.0.0
+HDF5_DIR      	 = /usr/tce/packages/hdf5/hdf5-parallel-1.8.18-gcc-4.9.3-mvapich2-2.2
 HDF5INCFLAGS     = -I$(HDF5_DIR)/include
 HDF5LIBFLAGS	 = -L$(HDF5_DIR)/lib
 
-MPI_DIR 		 = /usr/tce/packages/openmpi/openmpi-2.0.0-intel-18.0.1
+MPI_DIR 		 = /usr/tce/packages/mvapich2/mvapich2-2.2-gcc-4.9.3
 HDFMPIINCFLAGS   = -I$(MPI_DIR)/include
 HDFMPILIBFLAGS   = -L$(MPI_DIR)/lib -lhdf5 -lz
 
@@ -27,7 +27,6 @@ vars:
 	echo $(PPFLAGS)
 	echo $(LIBFLAGS)
 	echo $(LDFLAGS)
-
 
 clean:
 	rm -rf *.hdf5 *.exe *.o *.d *.dSYM

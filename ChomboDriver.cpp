@@ -11,6 +11,8 @@ int main(int argc, char* argv[])
 
   H5Eset_auto (H5E_DEFAULT,stop, NULL);
 
+#if 0
+
   int VCOUNT = 0;
   int QCOUNT = 0;
   int* VID = nullptr;   
@@ -39,6 +41,7 @@ int main(int argc, char* argv[])
     writeBoundaryFile(MPI_COMM_NULL, "GEOSboundary.hdf5", dt, 0, VCOUNT, x, v,
                       0, QCOUNT, pressure);
   }
+#endif
 
   MPI_Finalize();
   return 0;
