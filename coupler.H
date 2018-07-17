@@ -1,58 +1,65 @@
-
 #include <mpi.h>
 #include <hdf5.h>
 #include <vector>
 #include <string>
 #include <cstdio>
+#include <tuple>
+#include <map>
 
-struct P {
-  double X, Y, Z;
+struct vec3
+{
+  double e0;
+  double e1;
+  double e2;
 };
 
-struct V {
-  double X, Y, Z;
-};
+/* Map from field name to the HDF5 data type, the number of components per
+ * object and a pointer to the data. */
+using FieldMap = std::map<std::string, std::tuple<hid_t, int, void*>>;
 
-void boundaryFileOffsets(MPI_Comm comm, int localCount, int& offset, int& count);
+/*!
+ * \brief Write out a boundary file with the given data.
+ *
+ * \param [in] comm the communicator used in writing the file.
+ * \param [in] filename the name of the file to write out to.
+ * \param [out] face_offset the global offset at which this ranks face data is
+ *  written.
+ * \param [out] n_faces_to_write the number of faces this rank will write out.
+ * \param [out] node_offset the global offset at which this ranks node data is
+ *  written out.
+ * \param [out] n_nodes_to_write the number of nodes this rank will write out.
+ * \param [in] dt the current time step.
+ * \param [in] n_nodes the number of nodes in the entire mesh.
+ * \param [in] n_faces the number of faces in the entire mesh.
+ * \param [in] faces connectivity of the faces which are assumed to be quads.
+ * \param [in] on_boundary true iff the respective face is to be written out.
+ * \param [in] face_fields map from face field names to fields.
+ * \param [in] node_fields map from node field names to fields.
+ */
+void writeBoundaryFile(MPI_Comm comm, const char* filename, int& face_offset,
+                       int& n_faces_to_write, int& node_offset, 
+                       int& n_nodes_to_write, double dt, int n_faces,
+                       int n_nodes, const int* faces, const bool* on_boundary,
+                       const FieldMap& face_fields, const FieldMap& node_fields);
 
-// vectors here are local portion of total boundary arrays
-void createBoundaryFile(MPI_Comm comm,
-                        const std::string& a_filename, int voffset, int vcount, int vtotal,
-                        const std::vector<int>& a_vertexID,
-                        const std::vector<P>& a_positions,
-                        const std::vector<V>& a_velocity, int qoffset, int qcount, int qtotal,
-                        const std::vector<int>& a_quads,
-                        const std::vector<int>& a_quadID,
-                        const std::vector<double>& a_pressure);
-
-// assuming the file are opening is already laid out by createBoundaryFile
-// and the VertexID and QuadIDs have not changed.
-// if comm==MPI_COMM_NULL then every rank entering this function opens the file
-//   ie, it not a parallel file open but a posix layer file open.
-//  when "read"ing, std::vector objects get resize called on them.
-void rwBoundaryFile(MPI_Comm comm, const std::string& a_filename,
-                    bool a_read, double& dt,
-                    int voffset, int vcount,
-                    std::vector<P>& a_position,
-                    std::vector<V>& a_velocity, int qoffset, int qcount,
-                    std::vector<double>& a_pressure);
-
-void rwBoundaryFile(hid_t root,
-                    bool a_read, double& dt,
-                    int voffset, int vcount,
-                    std::vector<P>& a_position,
-                    std::vector<V>& a_velocity, int qoffset, int qcount,
-                    std::vector<double>& a_pressure);
-
-// if comm == MPI_COMM_NULL then voffset and vcount are ignored and the calling
-// ranks get a full copy of the data.
-void readBoundaryFile(MPI_Comm comm,
-                      const std::string& a_filename, double& a_dt, int voffset, int vcount,
-                      std::vector<int>& a_vertexID,
-                      std::vector<P>& a_positions,
-                      std::vector<V>& a_velocity, int qoffset, int qcount,
-                      std::vector<int>& a_quads,
-                      std::vector<int>& a_quadID,
-                      std::vector<double>& a_pressure);
-
+/*!
+ * \brief Read in a boundary file into the provided fields.
+ *
+ * \param [in] comm the communicator used in reading from the file.
+ * \param [in] filename the name of the file to read from.
+ * \param [in] face_offset the global offset at which this rank will read
+ *  face data.
+ * \param [in] n_faces_to_read the number of faces this rank will read in.
+ * \param [in] n_faces the number of faces in the entire mesh.
+ * \param [in] node_offset the global offset at which this rank will read node
+ *  data.
+ * \param [in] n_nodes_to_read the number of nodes this rank will read in.
+ * \param [in] n_nodes the number of nodes in the entire mesh.
+ * \param [in/out] face_fields map from face field names to fields.
+ * \param [in/out] node_fields map from node field names to fields.
+ */
+void readBoundaryFile(MPI_Comm comm, const char* filename, int face_offset,
+                      int n_faces_to_read, int n_faces, int node_offset, 
+                      int n_nodes_to_read, int n_nodes, FieldMap& face_fields,
+                      FieldMap& node_fields);
 
