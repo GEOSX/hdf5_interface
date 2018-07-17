@@ -44,8 +44,7 @@ void createDataset(hid_t group, const char* name, hid_t type,
  * \param [in] group the group where the dataset will live.
  * \param [in] name the name of the dataset.
  * \param [in] type the datatype of the dataset.
- * \param [in] global_offset the offset at which this rank is to write to
- *  the dataset
+ * \param [in] global_offset the offset at which this rank is to write to the dataset.
  * \param [in] global_size the total size of the dataset.
  * \param [in] local_size the size of the chunk to be written by this rank.
  * \param [in] buffer_size the total length of the DATA array.
@@ -406,7 +405,7 @@ void readBoundaryFile(MPI_Comm comm, const char* filename, int face_offset,
 
   /* Read in the face fields. */
   internal::readFields(root, face_fields, face_offset, n_faces_to_read, n_faces, 
-                       face_IDs);  
+                       face_IDs);
   delete[] face_IDs;
 
   /* Get the localIDs of the nodes that were written. */
