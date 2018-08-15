@@ -185,8 +185,7 @@ int main(int argc, char* argv[])
 
       if (!result)
       {
-        std::cout << "Rank " << rank << ": Node error at (" << i << ", " << j 
-                  << ")." << std::endl;
+        std::cout << "Rank " << rank << ": Node error at (" << i << ", " << j << ")." << std::endl;
       }
 
       node_index++;

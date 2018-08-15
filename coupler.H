@@ -29,8 +29,8 @@ using FieldMap = std::map<std::string, std::tuple<hid_t, int, void*>>;
  *  written out.
  * \param [out] n_nodes_to_write the number of nodes this rank will write out.
  * \param [in] dt the current time step.
- * \param [in] n_nodes the number of nodes in the entire mesh.
- * \param [in] n_faces the number of faces in the entire mesh.
+ * \param [in] n_nodes the number of nodes in the entire local mesh.
+ * \param [in] n_faces the number of faces in the entire local mesh.
  * \param [in] faces connectivity of the faces which are assumed to be quads.
  * \param [in] on_boundary true iff the respective face is to be written out.
  * \param [in] face_fields map from face field names to fields.
@@ -50,11 +50,11 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, int& face_offset,
  * \param [in] face_offset the global offset at which this rank will read
  *  face data.
  * \param [in] n_faces_to_read the number of faces this rank will read in.
- * \param [in] n_faces the number of faces in the entire mesh.
+ * \param [in] n_faces the number of faces in the entire local mesh.
  * \param [in] node_offset the global offset at which this rank will read node
  *  data.
  * \param [in] n_nodes_to_read the number of nodes this rank will read in.
- * \param [in] n_nodes the number of nodes in the entire mesh.
+ * \param [in] n_nodes the number of nodes in the entire local mesh.
  * \param [in/out] face_fields map from face field names to fields.
  * \param [in/out] node_fields map from node field names to fields.
  */

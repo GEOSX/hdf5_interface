@@ -39,7 +39,7 @@ void createDataset(hid_t group, const char* name, hid_t type,
 
 /*!
  * \brief Create a dataset under the given group with a subset of the given data
- *  specified by the indices arra.
+ *  specified by the indices array.
  *
  * \param [in] group the group where the dataset will live.
  * \param [in] name the name of the dataset.
@@ -355,6 +355,8 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, int& face_offset,
     }
   }
 
+  nodeLocalToFileID.clear();
+
   /* Write out the faces. */
   const hsize_t verts_per_quad = 4;
   hid_t quad_type = H5Tarray_create(H5T_NATIVE_INT, 1, &verts_per_quad);
@@ -371,7 +373,7 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, int& face_offset,
                           total_n_faces_to_write, n_faces_to_write, face_IDs);
 
   /* Write out the face field data. */
-  internal::createFields(root, face_fields, face_offset, 
+  internal::createFields(root, face_fields, face_offset,
                          total_n_faces_to_write, n_faces_to_write, 
                          n_faces, face_IDs);
 
