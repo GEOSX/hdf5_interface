@@ -1,4 +1,4 @@
-#include "coupler.H"
+#include "coupler.hpp"
 
 namespace internal
 {
@@ -235,14 +235,14 @@ void readFields(hid_t group, FieldMap& fm, hsize_t global_offset,
  * \param [in] offset the offset at which this rank is to write.
  * \param [in] global_count the total number of elements in the dataset.
  */
-void boundaryFileOffsets(MPI_Comm comm, int local_count, int& offset, 
-                         int& global_count)
+void boundaryFileOffsets(MPI_Comm comm, std::int64_t local_count, std::int64_t& offset, 
+                         std::int64_t& global_count)
 {
   int N;
   MPI_Comm_size(comm, &N);
-  MPI_Scan(&local_count, &offset, 1, MPI_INT, MPI_SUM, comm );
+  MPI_Scan(&local_count, &offset, 1, MPI_INT64_T, MPI_SUM, comm );
   global_count = offset;
-  MPI_Bcast( &global_count, 1, MPI_INT, N-1, comm); //last rank has total sum
+  MPI_Bcast( &global_count, 1, MPI_INT64_T, N-1, comm); //last rank has total sum
   offset -= local_count;
 }
 
@@ -250,10 +250,10 @@ void boundaryFileOffsets(MPI_Comm comm, int local_count, int& offset,
 
 
 //------------------------------------------------------------------------------
-void writeBoundaryFile(MPI_Comm comm, const char* filename, int& face_offset,
-                       int& n_faces_to_write, int& node_offset, 
-                       int& n_nodes_to_write, double dt, int n_faces,
-                       int n_nodes, const int* faces, const bool* on_boundary,
+void writeBoundaryFile(MPI_Comm comm, const char* filename, std::int64_t& face_offset,
+                       std::int64_t& n_faces_to_write, std::int64_t& node_offset, 
+                       std::int64_t& n_nodes_to_write, double dt, std::int64_t n_faces,
+                       std::int64_t n_nodes, const std::int64_t* faces, const int* on_boundary,
                        const FieldMap& face_fields, const FieldMap& node_fields)
 {
   /* Create the file and open the root group. */
@@ -278,14 +278,14 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, int& face_offset,
 
   /* Calculate the number of faces to write. */
   n_faces_to_write = 0;
-  for (int i = 0; i < n_faces; ++i)
+  for (std::int64_t i = 0; i < n_faces; ++i)
   {
-    n_faces_to_write += on_boundary[i];
+    n_faces_to_write += on_boundary[i] != 0;
   }
 
   /* Get the face offset at which to write and the total number of faces to write. */
   face_offset = 0;
-  int total_n_faces_to_write = n_faces_to_write;
+  std::int64_t total_n_faces_to_write = n_faces_to_write;
   internal::boundaryFileOffsets(comm, n_faces_to_write, face_offset, 
                                 total_n_faces_to_write);
 
@@ -302,21 +302,21 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, int& face_offset,
   }
 
   /* Create the map of local node IDs to file node IDs and the reverse map. */
-  std::map<int, int> nodeLocalToFileID;
+  std::map<std::int64_t, std::int64_t> nodeLocalToFileID;
   for (int i = 0; i < n_faces_to_write; ++i)
   {
-    const int cur_face = face_IDs[i];
+    const hsize_t cur_face = face_IDs[i];
     for (int j = 0; j < 4; ++j)
     {
-      int cur_nodeID = faces[4 * cur_face + j];
+      std::int64_t cur_nodeID = faces[4 * cur_face + j];
       nodeLocalToFileID[cur_nodeID] = -1;
     }
   }
 
-  int fileNodeID = 0;
+  std::int64_t fileNodeID = 0;
   n_nodes_to_write = nodeLocalToFileID.size();
   hsize_t* nodeFileToLocalID = new hsize_t[n_nodes_to_write];
-  for (std::map<int, int>::iterator it = nodeLocalToFileID.begin();
+  for (std::map<std::int64_t, std::int64_t>::iterator it = nodeLocalToFileID.begin();
        it != nodeLocalToFileID.end(); ++it)
   {
     nodeFileToLocalID[fileNodeID] = it->first;
@@ -326,7 +326,7 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, int& face_offset,
 
   /* Get the node offset at which to write and the total number of nodes to write. */
   node_offset = 0;
-  int total_n_nodes_to_write = n_nodes_to_write;
+  std::int64_t total_n_nodes_to_write = n_nodes_to_write;
   internal::boundaryFileOffsets(comm, n_nodes_to_write, node_offset, 
                                 total_n_nodes_to_write);
 
@@ -344,13 +344,13 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, int& face_offset,
   nodeFileToLocalID = nullptr;
 
   /* Redo the face connectivity with the file nodal numbering. */
-  int* faces_to_write = new int[4 * n_faces_to_write];
-  for (int i = 0; i < n_faces_to_write; ++i)
+  std::int64_t* faces_to_write = new std::int64_t[4 * n_faces_to_write];
+  for (std::int64_t i = 0; i < n_faces_to_write; ++i)
   {
     const hsize_t cur_face = face_IDs[i];
-    for (int j = 0; j < 4; ++j)
+    for (std::int64_t j = 0; j < 4; ++j)
     {
-      const int cur_node = faces[4 * cur_face + j];
+      const std::int64_t cur_node = faces[4 * cur_face + j];
       faces_to_write[4 * i + j] = nodeLocalToFileID[cur_node];
     }
   }
@@ -359,13 +359,13 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, int& face_offset,
 
   /* Write out the faces. */
   const hsize_t verts_per_quad = 4;
-  hid_t quad_type = H5Tarray_create(H5T_NATIVE_INT, 1, &verts_per_quad);
+  hid_t quad_type = H5Tarray_create(H5T_NATIVE_INT64, 1, &verts_per_quad);
   internal::createDataset(root, "Quads", quad_type, face_offset,
                           total_n_faces_to_write, n_faces_to_write, 
                           faces_to_write);
   H5Tclose(quad_type);
 
-  delete faces_to_write;
+  delete[] faces_to_write;
   faces_to_write = nullptr;
 
   /* Write out the face local IDs. */
@@ -385,9 +385,9 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, int& face_offset,
 }
 
 //------------------------------------------------------------------------------
-void readBoundaryFile(MPI_Comm comm, const char* filename, int face_offset,
-                      int n_faces_to_read, int n_faces, int node_offset, 
-                      int n_nodes_to_read, int n_nodes, FieldMap& face_fields,
+void readBoundaryFile(MPI_Comm comm, const char* filename, std::int64_t face_offset,
+                      std::int64_t n_faces_to_read, std::int64_t n_faces, std::int64_t node_offset, 
+                      std::int64_t n_nodes_to_read, std::int64_t n_nodes, FieldMap& face_fields,
                       FieldMap& node_fields)
 {
   /* Open the file and the root group. */

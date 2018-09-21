@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <tuple>
 #include <map>
+#include <cstdint>
 
 struct vec3
 {
@@ -15,7 +16,7 @@ struct vec3
 
 /* Map from field name to the HDF5 data type, the number of components per
  * object and a pointer to the data. */
-using FieldMap = std::map<std::string, std::tuple<hid_t, int, void*>>;
+using FieldMap = std::map<std::string, std::tuple<hid_t, std::int64_t, void*>>;
 
 /*!
  * \brief Write out a boundary file with the given data.
@@ -36,10 +37,10 @@ using FieldMap = std::map<std::string, std::tuple<hid_t, int, void*>>;
  * \param [in] face_fields map from face field names to fields.
  * \param [in] node_fields map from node field names to fields.
  */
-void writeBoundaryFile(MPI_Comm comm, const char* filename, int& face_offset,
-                       int& n_faces_to_write, int& node_offset, 
-                       int& n_nodes_to_write, double dt, int n_faces,
-                       int n_nodes, const int* faces, const bool* on_boundary,
+void writeBoundaryFile(MPI_Comm comm, const char* filename, std::int64_t& face_offset,
+                       std::int64_t& n_faces_to_write, std::int64_t& node_offset, 
+                       std::int64_t& n_nodes_to_write, double dt, std::int64_t n_faces,
+                       std::int64_t n_nodes, const std::int64_t* faces, const int* on_boundary,
                        const FieldMap& face_fields, const FieldMap& node_fields);
 
 /*!
@@ -58,8 +59,8 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, int& face_offset,
  * \param [in/out] face_fields map from face field names to fields.
  * \param [in/out] node_fields map from node field names to fields.
  */
-void readBoundaryFile(MPI_Comm comm, const char* filename, int face_offset,
-                      int n_faces_to_read, int n_faces, int node_offset, 
-                      int n_nodes_to_read, int n_nodes, FieldMap& face_fields,
+void readBoundaryFile(MPI_Comm comm, const char* filename, std::int64_t face_offset,
+                      std::int64_t n_faces_to_read, std::int64_t n_faces, std::int64_t node_offset, 
+                      std::int64_t n_nodes_to_read, std::int64_t n_nodes, FieldMap& face_fields,
                       FieldMap& node_fields);
 
