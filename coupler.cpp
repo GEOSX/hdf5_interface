@@ -22,14 +22,14 @@ void createDataset(hid_t group, const char* name, hid_t type,
                    hsize_t global_offset, hsize_t global_size,
                    hsize_t local_size, const void* data)
 {
-  hid_t dataspace = H5Screate_simple(1, &global_size, NULL);
+  hid_t dataspace = H5Screate_simple(1, &global_size, nullptr);
   hid_t dataset = H5Dcreate(group, name, type, dataspace, H5P_DEFAULT, 
                             H5P_DEFAULT, H5P_DEFAULT);
 
-  hid_t mem_dataspace = H5Screate_simple(1, &local_size, NULL);
+  hid_t mem_dataspace = H5Screate_simple(1, &local_size, nullptr);
   hid_t hyperslab = dataspace;
-  H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, &global_offset, NULL, 
-                      &local_size, NULL);
+  H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, &global_offset, nullptr, 
+                      &local_size, nullptr);
   H5Dwrite(dataset, type, mem_dataspace, hyperslab, H5P_DEFAULT, data);
   
   H5Dclose(dataset);
@@ -60,16 +60,16 @@ void createDataset(hid_t group, const char* name, hid_t type,
                    const hsize_t* indices,
                    const void* data)
 {
-  hid_t dataspace = H5Screate_simple(1, &global_size, NULL);
+  hid_t dataspace = H5Screate_simple(1, &global_size, nullptr);
   hid_t dataset = H5Dcreate(group, name, type, dataspace, H5P_DEFAULT, 
                             H5P_DEFAULT, H5P_DEFAULT);
 
-  hid_t mem_dataspace = H5Screate_simple(1, &buffer_size, NULL);
+  hid_t mem_dataspace = H5Screate_simple(1, &buffer_size, nullptr);
   H5Sselect_elements(mem_dataspace, H5S_SELECT_SET, local_size, indices);
   
   hid_t hyperslab = dataspace;
-  H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, &global_offset, NULL, 
-                      &local_size, NULL);
+  H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, &global_offset, nullptr, 
+                      &local_size, nullptr);
   H5Dwrite(dataset, type, mem_dataspace, hyperslab, H5P_DEFAULT, data);
   
   H5Sclose(mem_dataspace);
@@ -140,10 +140,10 @@ void readDataset(hid_t group, const char* name, hsize_t global_offset,
   }
 
   /* Create the memory and file dataspaces and do the read. */
-  hid_t mem_dataspace = H5Screate_simple(1, &n_elems, NULL);
+  hid_t mem_dataspace = H5Screate_simple(1, &n_elems, nullptr);
   hid_t hyperslab = dataspace;
   H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, &global_offset, 
-                      NULL, &n_elems, NULL);
+                      nullptr, &n_elems, nullptr);
 
   H5Dread(dataset, type, mem_dataspace, hyperslab, H5P_DEFAULT, data);
 
@@ -186,12 +186,12 @@ void readDataset(hid_t group, const char* name, hsize_t global_offset,
   }
 
   /* Create the memory and file dataspaces and do the read. */
-  hid_t mem_dataspace = H5Screate_simple(1, &buffer_size, NULL);
+  hid_t mem_dataspace = H5Screate_simple(1, &buffer_size, nullptr);
   H5Sselect_elements(mem_dataspace, H5S_SELECT_SET, n_elems, indices);
 
   hid_t hyperslab = dataspace;
   H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, &global_offset, 
-                      NULL, &n_elems, NULL);
+                      nullptr, &n_elems, nullptr);
 
   H5Dread(dataset, type, mem_dataspace, hyperslab, H5P_DEFAULT, data);
 
