@@ -88,11 +88,11 @@ void createDataset(hid_t group, const char* name, hid_t type,
  * \param [in] buffer_size the total length of the DATA array.
  * \param [in] indices the indices of the values in the DATA array to write out.
  */
-void createFields(hid_t group, const FieldMap& fm, hsize_t global_offset, 
+void createFields(hid_t group, const FieldMap_in& fm, hsize_t global_offset, 
                   hsize_t global_size, hsize_t local_size, 
                   hsize_t buffer_size, const hsize_t* indices)
 {
-  for (FieldMap::const_iterator it = fm.begin(); 
+  for (FieldMap_in::const_iterator it = fm.begin(); 
        it != fm.end(); ++it)
   {
     /* Extract the field data and metadata. */
@@ -211,10 +211,10 @@ void readDataset(hid_t group, const char* name, hsize_t global_offset,
  * \param [in] buffer_size the size of the field data arrays.
  * \param [in] indices the indices of the values in the field arrays to write to.
  */
-void readFields(hid_t group, FieldMap& fm, hsize_t global_offset, 
+void readFields(hid_t group, FieldMap_out& fm, hsize_t global_offset, 
                 hsize_t n_elems, hsize_t buffer_size, const hsize_t* indices)
 {
-  for (FieldMap::iterator it = fm.begin(); 
+  for (FieldMap_out::iterator it = fm.begin(); 
        it != fm.end(); ++it)
   {
     /* Extract the field data and metadata. */
@@ -254,7 +254,7 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, std::int64_t& face_o
                        std::int64_t& n_faces_to_write, std::int64_t& node_offset, 
                        std::int64_t& n_nodes_to_write, double dt, std::int64_t n_faces,
                        std::int64_t n_nodes, const std::int64_t* faces, const int* on_boundary,
-                       const FieldMap& face_fields, const FieldMap& node_fields)
+                       const FieldMap_in& face_fields, const FieldMap_in& node_fields)
 {
   /* Create the file and open the root group. */
   hid_t file_access = H5Pcreate(H5P_FILE_ACCESS);
@@ -387,8 +387,8 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, std::int64_t& face_o
 //------------------------------------------------------------------------------
 void readBoundaryFile(MPI_Comm comm, const char* filename, std::int64_t face_offset,
                       std::int64_t n_faces_to_read, std::int64_t n_faces, std::int64_t node_offset, 
-                      std::int64_t n_nodes_to_read, std::int64_t n_nodes, FieldMap& face_fields,
-                      FieldMap& node_fields)
+                      std::int64_t n_nodes_to_read, std::int64_t n_nodes, FieldMap_out& face_fields,
+                      FieldMap_out& node_fields)
 {
   /* Open the file and the root group. */
   hid_t file_access = H5Pcreate(H5P_FILE_ACCESS);

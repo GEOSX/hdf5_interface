@@ -16,7 +16,8 @@ struct vec3
 
 /* Map from field name to the HDF5 data type, the number of components per
  * object and a pointer to the data. */
-using FieldMap = std::map<std::string, std::tuple<hid_t, std::int64_t, void*>>;
+using FieldMap_out = std::map<std::string, std::tuple<hid_t, std::int64_t, void*>>;
+using FieldMap_in = std::map<std::string, std::tuple<hid_t, std::int64_t, const void*>>;
 
 /*!
  * \brief Write out a boundary file with the given data.
@@ -41,7 +42,7 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, std::int64_t& face_o
                        std::int64_t& n_faces_to_write, std::int64_t& node_offset, 
                        std::int64_t& n_nodes_to_write, double dt, std::int64_t n_faces,
                        std::int64_t n_nodes, const std::int64_t* faces, const int* on_boundary,
-                       const FieldMap& face_fields, const FieldMap& node_fields);
+                       const FieldMap_in& face_fields, const FieldMap_in& node_fields);
 
 /*!
  * \brief Read in a boundary file into the provided fields.
@@ -61,6 +62,6 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, std::int64_t& face_o
  */
 void readBoundaryFile(MPI_Comm comm, const char* filename, std::int64_t face_offset,
                       std::int64_t n_faces_to_read, std::int64_t n_faces, std::int64_t node_offset, 
-                      std::int64_t n_nodes_to_read, std::int64_t n_nodes, FieldMap& face_fields,
-                      FieldMap& node_fields);
+                      std::int64_t n_nodes_to_read, std::int64_t n_nodes, FieldMap_out& face_fields,
+                      FieldMap_out& node_fields);
 
