@@ -280,7 +280,7 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, std::int64_t& face_o
   n_faces_to_write = 0;
   for (std::int64_t i = 0; i < n_faces; ++i)
   {
-    n_faces_to_write += on_boundary[i] != 0;
+    n_faces_to_write += on_boundary[i] > 1;
   }
 
   /* Get the face offset at which to write and the total number of faces to write. */
@@ -294,7 +294,7 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, std::int64_t& face_o
   int cur_n_faces = 0;
   for (int i = 0; i < n_faces; ++i)
   {
-    if (on_boundary[i])
+    if (on_boundary[i] > 1)
     {
       face_IDs[cur_n_faces] = i;
       cur_n_faces++;

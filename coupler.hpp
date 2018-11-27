@@ -34,7 +34,7 @@ using FieldMap_in = std::map<std::string, std::tuple<hid_t, std::int64_t, const 
  * \param [in] n_nodes the number of nodes in the entire local mesh.
  * \param [in] n_faces the number of faces in the entire local mesh.
  * \param [in] faces connectivity of the faces which are assumed to be quads.
- * \param [in] on_boundary true iff the respective face is to be written out.
+ * \param [in] on_boundary > 1 iff the respective face is to be written out.
  * \param [in] face_fields map from face field names to fields.
  * \param [in] node_fields map from node field names to fields.
  */
