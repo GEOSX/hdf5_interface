@@ -28,17 +28,12 @@
 #include <map>
 #include <cstdint>
 
-struct vec3
-{
-  double e0;
-  double e1;
-  double e2;
-};
-
 /* Map from field name to the HDF5 data type, the number of components per
  * object and a pointer to the data. */
 using FieldMap_out = std::map<std::string, std::tuple<hid_t, std::int64_t, void*>>;
 using FieldMap_in = std::map<std::string, std::tuple<hid_t, std::int64_t, const void*>>;
+
+void waitForFileExistence(MPI_Comm comm, const char* filename);
 
 /*!
  * \brief Write out a boundary file with the given data.
@@ -87,9 +82,8 @@ void readBoundaryHeader(MPI_Comm comm,
                         std::int64_t& n_faces,
                         std::int64_t& n_nodes);
 
-void readBoundaryFile(MPI_Comm comm, const char* filename, std::int64_t face_offset,
-                      std::int64_t n_faces_to_read, std::int64_t n_faces, std::int64_t node_offset, 
-                      std::int64_t n_nodes_to_read, std::int64_t n_nodes, FieldMap_out& face_fields,
-                      FieldMap_out& node_fields);
+void readBoundaryFile(MPI_Comm comm, const char* filename,
+                      std::int64_t face_offset, std::int64_t n_faces_to_read, std::int64_t n_faces, FieldMap_out& face_fields,
+                      std::int64_t node_offset, std::int64_t n_nodes_to_read, std::int64_t n_nodes, FieldMap_out& node_fields);
 
 #endif

@@ -1,5 +1,9 @@
 #include "coupler.hpp"
 
+#include <chrono>
+#include <thread>
+#include <fstream>
+
 namespace internal
 {
 
@@ -249,8 +253,25 @@ void boundaryFileOffsets(MPI_Comm comm, std::int64_t local_count, std::int64_t& 
 } /* namespace internal */
 
 
+void waitForFileExistence(MPI_Comm comm, const char* fileName)
+{
+  int rank;
+  MPI_Comm_rank(comm, &rank);
+
+  if (rank == 0)
+  {
+    std::chrono::milliseconds const sleepTime(1);
+    while (!std::ifstream(fileName))
+    {
+      std::this_thread::sleep_for(sleepTime);
+    }
+  }
+
+  MPI_Barrier(comm);
+}
+
 //------------------------------------------------------------------------------
-void writeBoundaryFile(MPI_Comm comm, const char* filename, double dt, const int* on_boundary,
+void writeBoundaryFile(MPI_Comm comm, const char* fileName, double dt, const int* on_boundary,
                        std::int64_t& face_offset, std::int64_t& n_faces_to_write, std::int64_t n_faces,
                        const std::int64_t* faces, const FieldMap_in& face_fields,
                        std::int64_t& node_offset, std::int64_t& n_nodes_to_write, std::int64_t n_nodes,
@@ -263,7 +284,9 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, double dt, const int
     H5Pset_fapl_mpio(file_access, comm, MPI_INFO_NULL);
   }
 
-  hid_t m_fileID = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, 
+  std::string tempFileName(fileName);
+  tempFileName += ".tmp";
+  hid_t m_fileID = H5Fcreate(tempFileName.data(), H5F_ACC_TRUNC, H5P_DEFAULT, 
                              file_access);
   H5Pclose(file_access);
   hid_t root = H5Gopen(m_fileID, "/", H5P_DEFAULT);
@@ -396,11 +419,19 @@ void writeBoundaryFile(MPI_Comm comm, const char* filename, double dt, const int
 
   H5Gclose(root);
   H5Fclose(m_fileID);
+
+  /* Rename the temporary file to the proper name. */
+  int rank;
+  MPI_Comm_rank(comm, &rank);
+  if (rank == 0)
+  {
+    std::rename(tempFileName.data(), fileName);
+  }
 }
 
 //------------------------------------------------------------------------------
 void readBoundaryHeader(MPI_Comm comm,
-                        const char* filename,
+                        const char* fileName,
                         double& dt,
                         std::int64_t& n_faces,
                         std::int64_t& n_nodes)
@@ -412,7 +443,7 @@ void readBoundaryHeader(MPI_Comm comm,
     H5Pset_fapl_mpio(file_access, comm, MPI_INFO_NULL);
   }
 
-  hid_t m_fileID = H5Fopen(filename, H5F_ACC_RDONLY, file_access);
+  hid_t m_fileID = H5Fopen(fileName, H5F_ACC_RDONLY, file_access);
   H5Pclose(file_access);
   hid_t root = H5Gopen(m_fileID, "/", H5P_DEFAULT);
 
@@ -437,8 +468,7 @@ void readBoundaryHeader(MPI_Comm comm,
 
 //------------------------------------------------------------------------------
 void readBoundaryFile(MPI_Comm comm,
-                      const char* filename,
-                      double& dt,
+                      const char* fileName,
                       std::int64_t face_offset,
                       std::int64_t n_faces_to_read,
                       std::int64_t n_faces,
@@ -455,26 +485,9 @@ void readBoundaryFile(MPI_Comm comm,
     H5Pset_fapl_mpio(file_access, comm, MPI_INFO_NULL);
   }
 
-  hid_t m_fileID = H5Fopen(filename, H5F_ACC_RDONLY, file_access);
+  hid_t m_fileID = H5Fopen(fileName, H5F_ACC_RDONLY, file_access);
   H5Pclose(file_access);
   hid_t root = H5Gopen(m_fileID, "/", H5P_DEFAULT);
-
-  /* Read dt */
-  hid_t attr1 = H5Aopen(root, "dt", H5P_DEFAULT);
-  H5Aread(attr1, H5T_NATIVE_DOUBLE, &dt);
-  H5Aclose(attr1);
-
-  /* Read n_faces. */
-  std::int64_t n_faces_file;
-  hid_t attr2 = H5Aopen(root, "n_faces", H5P_DEFAULT);
-  H5Aread(attr2, H5T_NATIVE_INT64, &n_faces_file);
-  H5Aclose(attr2);
-
-  /* Read n_nodes. */
-  std::int64_t n_nodes_file;
-  hid_t attr3 = H5Aopen(root, "n_nodes", H5P_DEFAULT);
-  H5Aread(attr3, H5T_NATIVE_INT64, &n_nodes_file);
-  H5Aclose(attr3);
 
   /* Get the localIDs of the faces that were written. */
   hsize_t* face_IDs = new hsize_t[n_faces_to_read];
