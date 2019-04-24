@@ -271,7 +271,7 @@ void waitForFileExistence(MPI_Comm comm, const char* fileName)
 }
 
 //------------------------------------------------------------------------------
-void writeBoundaryFile(MPI_Comm comm, const char* fileName, double dt, const int* on_boundary,
+void writeBoundaryFile(MPI_Comm comm, const char* fileName, double dt, const bool* on_boundary,
                        std::int64_t& face_offset, std::int64_t& n_faces_to_write, std::int64_t n_faces,
                        const std::int64_t* faces, const FieldMap_in& face_fields,
                        std::int64_t& node_offset, std::int64_t& n_nodes_to_write, std::int64_t n_nodes,
@@ -303,7 +303,7 @@ void writeBoundaryFile(MPI_Comm comm, const char* fileName, double dt, const int
   n_faces_to_write = 0;
   for (std::int64_t i = 0; i < n_faces; ++i)
   {
-    n_faces_to_write += on_boundary[i] > 1;
+    n_faces_to_write += on_boundary[i];
   }
 
   /* Get the face offset at which to write and the total number of faces to write. */
@@ -317,7 +317,7 @@ void writeBoundaryFile(MPI_Comm comm, const char* fileName, double dt, const int
   int cur_n_faces = 0;
   for (int i = 0; i < n_faces; ++i)
   {
-    if (on_boundary[i] > 1)
+    if (on_boundary[i])
     {
       face_IDs[cur_n_faces] = i;
       cur_n_faces++;

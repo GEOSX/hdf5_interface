@@ -41,7 +41,7 @@ void waitForFileExistence(MPI_Comm comm, const char* filename);
  * \param [in] comm the communicator used in writing the file.
  * \param [in] filename the name of the file to write out to.
  * \param [in] dt the current time step.
- * \param [in] on_boundary > 1 iff the respective face is to be written out.
+ * \param [in] on_boundary true iff the respective face is to be written out.
  * \param [out] face_offset the global offset at which this ranks face data is
  *  written.
  * \param [out] n_faces_to_write the number of faces this rank will write out.
@@ -54,7 +54,7 @@ void waitForFileExistence(MPI_Comm comm, const char* filename);
  * \param [in] n_nodes the number of nodes in the entire local mesh.
  * \param [in] node_fields map from node field names to fields.
  */
-void writeBoundaryFile(MPI_Comm comm, const char* filename, double dt, const int* on_boundary,
+void writeBoundaryFile(MPI_Comm comm, const char* filename, double dt, const bool* on_boundary,
                        std::int64_t& face_offset, std::int64_t& n_faces_to_write, std::int64_t n_faces,
                        const std::int64_t* faces, const FieldMap_in& face_fields,
                        std::int64_t& node_offset, std::int64_t& n_nodes_to_write, std::int64_t n_nodes,
