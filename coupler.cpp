@@ -68,15 +68,19 @@ void createDataset(hid_t group, const char* name, hid_t type,
   hid_t dataset = H5Dcreate(group, name, type, dataspace, H5P_DEFAULT, 
                             H5P_DEFAULT, H5P_DEFAULT);
 
-  hid_t mem_dataspace = H5Screate_simple(1, &buffer_size, nullptr);
-  H5Sselect_elements(mem_dataspace, H5S_SELECT_SET, local_size, indices);
+  if (local_size != 0)
+  {
+    hid_t mem_dataspace = H5Screate_simple(1, &buffer_size, nullptr);
+    H5Sselect_elements(mem_dataspace, H5S_SELECT_SET, local_size, indices);
+    
+    hid_t hyperslab = dataspace;
+    H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, &global_offset, nullptr, 
+                        &local_size, nullptr);
+    H5Dwrite(dataset, type, mem_dataspace, hyperslab, H5P_DEFAULT, data);
+
+    H5Sclose(mem_dataspace);
+  }
   
-  hid_t hyperslab = dataspace;
-  H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, &global_offset, nullptr, 
-                      &local_size, nullptr);
-  H5Dwrite(dataset, type, mem_dataspace, hyperslab, H5P_DEFAULT, data);
-  
-  H5Sclose(mem_dataspace);
   H5Sclose(dataspace);
   H5Dclose(dataset);
 }
