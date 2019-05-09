@@ -392,7 +392,7 @@ void writeBoundaryFile(MPI_Comm comm, const char* fileName, double dt, const boo
     for (std::int64_t j = 0; j < 4; ++j)
     {
       const std::int64_t cur_node = faces[4 * cur_face + j];
-      faces_to_write[4 * i + j] = nodeLocalToFileID[cur_node];
+      faces_to_write[4 * i + j] = nodeLocalToFileID[cur_node] + node_offset;
     }
   }
 
