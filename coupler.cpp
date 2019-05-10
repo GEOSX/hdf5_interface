@@ -199,11 +199,14 @@ void readDataset(hid_t group, const char* name, hsize_t global_offset,
   hid_t mem_dataspace = H5Screate_simple(1, &buffer_size, nullptr);
   H5Sselect_elements(mem_dataspace, H5S_SELECT_SET, n_elems, indices);
 
-  hid_t hyperslab = dataspace;
-  H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, &global_offset, 
-                      nullptr, &n_elems, nullptr);
+  if( n_elems > 0 )
+  {
+    hid_t hyperslab = dataspace;
+    H5Sselect_hyperslab(hyperslab, H5S_SELECT_SET, &global_offset,
+                        nullptr, &n_elems, nullptr);
 
-  H5Dread(dataset, type, mem_dataspace, hyperslab, H5P_DEFAULT, data);
+    H5Dread(dataset, type, mem_dataspace, hyperslab, H5P_DEFAULT, data);
+  }
 
   H5Sclose(dataspace);
   H5Sclose(mem_dataspace);
